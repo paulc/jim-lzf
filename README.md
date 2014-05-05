@@ -1,4 +1,5 @@
 jim-lzf
 =======
 
-LZF extension for JImTCL
+LZF extension for JimTCL
+
