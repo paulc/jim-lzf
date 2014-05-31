@@ -27,9 +27,39 @@ static int LzfCompress_Cmd(Jim_Interp *interp, int argc, Jim_Obj *const argv[]) 
     return JIM_OK;
 }
 
-static int LzfDecompress_Cmd(Jim_Interp *interp, int argc, Jim_Obj *const argv[]) {
+static int LzfDecompress_Cmd(Jim_Interp *interp, int argc, 
+                                Jim_Obj *const argv[]) {
+
+    long len = 0;
+    long max = 0;
+
+    while (argc > 1 && Jim_String(argv[1])[0] == '-') {
+        if (Jim_CompareStringImmediate(interp, argv[1], "-len") && 
+                        argc > 2 ) {
+            if (Jim_GetLong(interp, argv[2], &len) != JIM_OK) {
+                Jim_SetResultString(interp,"Invalid decompressed length",-1);
+                return JIM_ERR;
+            }
+            --argc;
+            ++argv;
+        } else if (Jim_CompareStringImmediate(interp, argv[1], "-max") &&
+                       argc > 2) {
+            if (Jim_GetLong(interp, argv[2], &max) != JIM_OK) {
+                Jim_SetResultString(interp,"Invalid max memory length",-1);
+                return JIM_ERR;
+            }
+            --argc;
+            ++argv;
+        } else {
+            break;
+        }
+        --argc;
+        ++argv;
+    }
+
     if (argc != 2) {
-        Jim_WrongNumArgs(interp,1,argv,"<string>");
+        Jim_WrongNumArgs(interp,1,argv,
+                "[-len <decompressed length>] [-max <max memory>] <string>");
         return JIM_ERR;
     }
 
@@ -38,12 +68,33 @@ static int LzfDecompress_Cmd(Jim_Interp *interp, int argc, Jim_Obj *const argv[]
         Jim_SetResultString(interp, "", 0);
         return JIM_OK;
     }
-    void *d = Jim_Alloc(l*5);
-    unsigned int n = lzf_decompress(Jim_String(argv[1]),l,d,l*10);
+
+    unsigned int n = 0;
+    unsigned int dl = l;
+    void *d = NULL;
+
+    if (len) {
+        d = Jim_Alloc(len);
+        n = lzf_decompress(Jim_String(argv[1]),l,d,len);
+    } else {
+        while (n == 0 && (max > 0 ? dl < max : 1)) {
+            dl = dl * 2;
+            if (max && dl > max) {
+                dl = max;
+            }
+            if ((d = Jim_Realloc(d,dl)) == NULL) {
+                break;
+            }
+            n = lzf_decompress(Jim_String(argv[1]),l,d,dl);
+        }
+    }
+
     if (n == 0) {
+        Jim_Free(d);
         Jim_SetResultString(interp, "Error decompressing data", -1);
         return JIM_ERR;
     }
+
     Jim_SetResultString(interp,d,n);
     Jim_Free(d);
     return JIM_OK;
